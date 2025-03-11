@@ -113,3 +113,29 @@ def test_augmentation(sample_data):
     
     # Check that at least some samples are different
     assert not all(torch.allclose(samples[0], sample) for sample in samples[1:])
+
+def test_invalid_inputs(sample_data):
+    """Test handling of invalid inputs."""
+    # Test invalid directory
+    with pytest.raises(ValueError, match="Directory not found"):
+        MultispectralDataset(
+            data_dir="/nonexistent/dir",
+            input_size=(64, 64),
+            bands=['B1']
+        )
+    
+    # Test invalid band names
+    with pytest.raises(ValueError, match="Invalid band names"):
+        MultispectralDataset(
+            data_dir=str(sample_data['ms_dir']),
+            input_size=(64, 64),
+            bands=['invalid_band']
+        )
+    
+    # Test invalid input size
+    with pytest.raises(ValueError, match="Input size must be positive"):
+        MultispectralDataset(
+            data_dir=str(sample_data['ms_dir']),
+            input_size=(-1, 64),
+            bands=['B1']
+        )
