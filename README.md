@@ -77,68 +77,132 @@ export MLFLOW_ARTIFACT_LOCATION=/path/to/artifacts
 
 ### Basic Usage
 
+The system operates in two distinct modes:
+1. **Training Mode**: For model training and evaluation
+2. **Processing Mode**: For inference on new data
+
+#### Training Mode
+
 ```python
 import torch
-from models.dual_source_deeplabv3 import DualSourceDeepLabV3Plus
-from config.mlflow_config import MLflowConfig, MLflowTracker
-from spectral_bands import SpectralBands, SpectralIndices
+from models import DualSourceDeepLabV3Plus
+from config import Config, TrainingConfig
+from spectral_bands import SpectralIndices
 
-# Initialize MLflow tracking
-mlflow_config = MLflowConfig(
-    experiment_name="multispectral_segmentation",
-    tracking_uri="sqlite:///mlflow.db"
-)
-tracker = MLflowTracker(mlflow_config)
+# Load training configuration
+config = Config.from_yaml("configs/train.yaml")
+assert config.mode == "train"
 
 # Initialize model
 model = DualSourceDeepLabV3Plus(
-    num_classes=21,          # Number of segmentation classes
-    rgb_encoder="resnet50",  # High-quality RGB encoder
-    ms_encoder="resnet50",   # Multi-spectral encoder
-    ms_in_channels=8,        # Number of MS bands
-    fusion_channels=256      # Feature fusion channels
+    num_classes=config.model.num_classes,
+    rgb_encoder=config.model.backbone,
+    ms_encoder=config.model.backbone,
+    ms_in_channels=len(config.data.bands),
+    fusion_channels=256
 )
 
-# Start MLflow run
-tracker.start_run(run_name="dual_source_test")
+# Training loop
+trainer = Trainer(model, config)
+trainer.train()
+```
 
-# Log model parameters
-tracker.log_params({
-    "num_classes": 21,
-    "rgb_encoder": "resnet50",
-    "ms_encoder": "resnet50",
-    "ms_in_channels": 8,
-    "fusion_channels": 256
-})
+Example training configuration (train.yaml):
+```yaml
+mode: train
+experiment_name: multispectral_segmentation
+seed: 42
 
-# Prepare your data
-# Option 1: Dual-source input (RGB + MS)
-rgb_data = torch.randn(2, 3, 512, 512)        # High-quality RGB
-ms_data = torch.randn(2, 8, 512, 512)         # Multi-spectral bands
+model:
+  backbone: resnet50
+  output_stride: 16
+  num_classes: 21
+  pretrained: true
 
-# Option 2: Single-source input (MS only)
-ms_only_data = torch.randn(2, 8, 512, 512)    # Multi-spectral bands
+data:
+  data_dir: data/dataset
+  train_split: train
+  val_split: val
+  batch_size: 16
+  bands: [red, green, blue, nir]
 
-# Forward pass examples
-# Dual-source mode
-output_dual = model(rgb_img=rgb_data, ms_img=ms_data)
+spectral:
+  indices: [ndvi, evi]
+  use_as_features: true
 
-# Single-source mode (MS only)
-output_ms = model(ms_img=ms_only_data)
+training:
+  epochs: 100
+  learning_rate: 0.001
+  lr_scheduler: cosine
+  mixed_precision: true
+```
 
-# Calculate spectral indices if needed
-indices = SpectralIndices()
-ndvi = indices.ndvi(ms_data)
-evi = indices.evi(ms_data)
+#### Processing Mode
 
-# Log metrics
-tracker.log_metrics({
-    "ndvi_mean": ndvi.mean().item(),
-    "evi_mean": evi.mean().item()
-})
+```python
+import torch
+from models import DualSourceDeepLabV3Plus
+from config import Config
+from utils import process_image, save_prediction
 
-# End MLflow run
-tracker.end_run()
+# Load processing configuration
+config = Config.from_yaml("configs/process.yaml")
+assert config.mode == "process"
+
+# Load pretrained model
+model = DualSourceDeepLabV3Plus.load_from_checkpoint(
+    config.model.checkpoint_path
+)
+model.eval()
+
+# Process single image
+rgb_img = "data/test/rgb_image.tif"
+ms_img = "data/test/ms_image.tif"
+
+with torch.no_grad():
+    # Process with both RGB and MS data
+    prediction = process_image(
+        model, rgb_img, ms_img,
+        config.processing.batch_size,
+        config.processing.half_precision
+    )
+    
+    # Save prediction
+    save_prediction(
+        prediction,
+        "output/prediction.tif",
+        config.processing.output_format,
+        config.processing.preserve_metadata
+    )
+```
+
+Example processing configuration (process.yaml):
+```yaml
+mode: process
+experiment_name: inference_run
+seed: 42
+
+model:
+  backbone: resnet50
+  num_classes: 21
+  checkpoint_path: models/checkpoint.pth
+
+data:
+  data_dir: data/test
+  bands: [red, green, blue, nir]
+
+spectral:
+  indices: [ndvi, evi]
+  use_as_features: true
+
+processing:
+  batch_size: 1
+  device: cuda
+  half_precision: true
+  output_format: geotiff
+  preserve_metadata: true
+  confidence_threshold: 0.5
+```
 ```
 
 ### Model Architecture
@@ -255,21 +319,38 @@ The model calculates the following spectral indices:
 .
 ├── README.md
 ├── requirements.txt
+├── pyproject.toml                  # Poetry project configuration
 ├── models/
-│   └── dual_source_deeplabv3.py    # Dual-source DeepLabV3+ implementation
+│   ├── __init__.py
+│   ├── dual_source_deeplabv3.py   # Dual-source DeepLabV3+ implementation
+│   ├── attention.py               # Band attention modules
+│   └── fusion.py                  # Feature fusion modules
 ├── config/
-│   └── mlflow_config.py            # MLflow configuration and utilities
+│   ├── __init__.py
+│   ├── base.py                    # Base configuration classes
+│   ├── train.py                   # Training configuration
+│   └── process.py                 # Processing configuration
 ├── utils/
-│   ├── visualization.py            # Visualization utilities
-│   └── spectral_bands.py          # Spectral band processing
+│   ├── __init__.py
+│   ├── visualization.py           # Visualization utilities
+│   ├── spectral_bands.py         # Spectral band processing
+│   ├── process.py                # Image processing utilities
+│   └── metrics.py                # Evaluation metrics
 ├── data/
-│   └── datasets/                   # Dataset implementations
-├── experiments/
-│   └── configs/                    # Experiment configurations
-└── artifacts/                      # MLflow artifacts
-    ├── models/                     # Saved models
-    ├── metrics/                    # Logged metrics
-    └── plots/                      # Generated plots
+│   ├── __init__.py
+│   ├── dataset.py                # Base dataset class
+│   ├── transforms.py             # Data augmentation
+│   └── datasets/                 # Dataset implementations
+├── configs/                      # YAML configuration files
+│   ├── train.yaml               # Training configuration
+│   └── process.yaml             # Processing configuration
+├── scripts/
+│   ├── train.py                 # Training script
+│   └── process.py               # Processing script
+└── artifacts/                    # MLflow artifacts
+    ├── models/                   # Saved models
+    ├── metrics/                  # Logged metrics
+    └── plots/                    # Generated plots
 ```
 
 ## Contributing

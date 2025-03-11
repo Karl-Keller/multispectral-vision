@@ -1,0 +1,46 @@
+mode: process
+experiment_name: inference_run
+seed: 42
+output_dir: outputs
+
+model:
+  backbone: resnet50
+  num_classes: 21
+  checkpoint_path: models/checkpoint.pth
+  output_stride: 16
+
+data:
+  data_dir: data/test
+  bands: [red, green, blue, nir]
+  image_size: [512, 512]
+  normalize: true
+  stats:
+    mean: [0.485, 0.456, 0.406]  # ImageNet stats for RGB
+    std: [0.229, 0.224, 0.225]   # Custom stats for MS bands will be loaded from checkpoint
+
+spectral:
+  indices: [ndvi, evi]
+  use_as_features: true
+  band_attention: true
+  fusion_type: adaptive
+
+processing:
+  batch_size: 1
+  device: cuda
+  half_precision: true
+  output_format: geotiff
+  preserve_metadata: true
+  confidence_threshold: 0.5
+  tile_size: [1024, 1024]  # For processing large images
+  overlap: 64  # Overlap between tiles to avoid boundary artifacts
+  ensemble:
+    enabled: false
+    flip_augmentation: true
+    scale_augmentation: false
+  post_processing:
+    apply_crf: false  # Conditional Random Field
+    median_filter: 0  # Kernel size for median filter, 0 to disable
+  visualization:
+    save_overlay: true
+    colormap: cityscapes
+    alpha: 0.5
