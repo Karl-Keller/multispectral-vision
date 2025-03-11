@@ -1,0 +1,59 @@
+{
+    "data": {
+        "train_dir": "data/train",
+        "val_dir": "data/val",
+        "test_dir": "data/test",
+        "input_size": [512, 512],
+        "batch_size": 8,
+        "num_workers": 4
+    },
+    "model": {
+        "num_classes": 21,
+        "use_indices": true,
+        "backbone": "resnet50",
+        "pretrained": true,
+        "bands": [
+            "coastal",
+            "blue",
+            "green",
+            "red",
+            "red_edge1",
+            "red_edge2",
+            "red_edge3",
+            "nir",
+            "swir1",
+            "swir2",
+            "thermal"
+        ],
+        "indices": [
+            "ndvi",
+            "evi",
+            "ndwi",
+            "ndbi",
+            "savi",
+            "ndre",
+            "moisture"
+        ]
+    },
+    "training": {
+        "epochs": 100,
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "lr_scheduler": {
+            "type": "cosine",
+            "params": {
+                "T_max": 100,
+                "eta_min": 1e-6
+            }
+        },
+        "checkpoint_dir": "checkpoints",
+        "log_dir": "logs"
+    },
+    "inference": {
+        "input_dir": "data/inference/input",
+        "output_dir": "data/inference/output",
+        "checkpoint": "checkpoints/best_model.pth",
+        "batch_size": 1,
+        "save_visualization": true
+    }
+}
