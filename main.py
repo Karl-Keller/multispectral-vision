@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import argparse
-import json
 import logging
 from pathlib import Path
+
+import yaml
 
 from train import train_model
 from inference import run_inference
@@ -14,22 +15,38 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def load_config(config_path: str) -> dict:
-    """Load configuration from JSON file."""
+    """Load configuration from YAML file."""
     with open(config_path, 'r') as f:
-        config = json.load(f)
+        config = yaml.safe_load(f)
     return config
 
 def setup_directories(config: dict):
     """Create necessary directories if they don't exist."""
-    dirs = [
-        Path(config['data']['train_dir']),
-        Path(config['data']['val_dir']),
-        Path(config['data']['test_dir']),
-        Path(config['training']['checkpoint_dir']),
-        Path(config['training']['log_dir']),
-        Path(config['inference']['input_dir']),
-        Path(config['inference']['output_dir'])
-    ]
+    dirs = []
+    
+    # Common directories
+    output_dir = Path(config.get('output_dir', 'outputs'))
+    dirs.append(output_dir)
+    
+    # Training mode directories
+    if config.get('mode') == 'train':
+        data_dir = Path(config['data']['data_dir'])
+        dirs.extend([
+            data_dir / 'train',
+            data_dir / 'val',
+            data_dir / 'test',
+            output_dir / 'checkpoints',
+            output_dir / 'logs'
+        ])
+    
+    # Processing mode directories
+    elif config.get('mode') == 'process':
+        data_dir = Path(config['data']['data_dir'])
+        dirs.extend([
+            data_dir,
+            output_dir / 'predictions',
+            output_dir / 'visualizations'
+        ])
     
     for dir_path in dirs:
         dir_path.mkdir(parents=True, exist_ok=True)
@@ -37,9 +54,9 @@ def setup_directories(config: dict):
 
 def main():
     parser = argparse.ArgumentParser(description='Multi-spectral Vision Processor')
-    parser.add_argument('--config', type=str, required=True, help='Path to config.json')
-    parser.add_argument('--mode', type=str, choices=['train', 'inference'], required=True,
-                      help='Operation mode: train or inference')
+    parser.add_argument('--config', type=str, required=True, help='Path to config.yaml')
+    parser.add_argument('--mode', type=str, choices=['train', 'process'], required=True,
+                      help='Operation mode: train or process')
     args = parser.parse_args()
 
     # Load configuration

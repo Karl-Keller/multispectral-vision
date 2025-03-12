@@ -65,9 +65,35 @@ class TrainingConfig:
 
 
 @dataclass
+class ProcessingConfig:
+    """Configuration for inference/processing mode."""
+    # Processing settings
+    batch_size: int = 1  # Batch size for processing
+    num_workers: int = 2  # Number of workers for data loading
+    device: str = "cuda"  # Device to use (cuda/cpu)
+    half_precision: bool = True  # Use FP16 for faster inference
+    save_visualizations: bool = False  # Save visualization of predictions
+    output_format: str = "geotiff"  # Output format (geotiff/png/npy)
+    preserve_metadata: bool = True  # Preserve geospatial metadata
+    confidence_threshold: float = 0.5  # Threshold for binary predictions
+    
+    def __post_init__(self):
+        """Validate processing configuration."""
+        valid_formats = ["geotiff", "png", "npy"]
+        if self.output_format not in valid_formats:
+            raise ValueError(f"Invalid output format. Must be one of {valid_formats}")
+        
+        if not torch.cuda.is_available() and self.device == "cuda":
+            print("CUDA not available, falling back to CPU")
+            self.device = "cpu"
+            self.half_precision = False
+
+
+@dataclass
 class Config:
     """Main configuration class."""
     # Basic settings
+    mode: str  # "train" or "process"
     experiment_name: str  # Name of the experiment
     seed: int = 42  # Random seed
     output_dir: str = "outputs"  # Directory for saving outputs
@@ -76,7 +102,8 @@ class Config:
     model: ModelConfig = field(default_factory=ModelConfig)
     data: DataConfig = field(default_factory=DataConfig)
     spectral: SpectralConfig = field(default_factory=SpectralConfig)
-    training: TrainingConfig = field(default_factory=TrainingConfig)
+    training: Optional[TrainingConfig] = field(default=None)  # Only used in train mode
+    processing: Optional[ProcessingConfig] = field(default=None)  # Only used in process mode
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -87,6 +114,11 @@ class Config:
     
     def _validate_config(self):
         """Validate configuration values."""
+        # Validate mode
+        valid_modes = ["train", "process"]
+        if self.mode not in valid_modes:
+            raise ValueError(f"Invalid mode: {self.mode}. Must be one of {valid_modes}")
+        
         # Validate model config
         valid_backbones = ["resnet50", "resnet101", "mobilenetv2"]
         if self.model.backbone not in valid_backbones:
@@ -104,9 +136,15 @@ class Config:
                   for b in self.data.bands):
             raise ValueError("Invalid spectral bands specified")
         
-        # Validate training config
-        if self.training.lr_scheduler not in ["cosine", "step", "plateau"]:
-            raise ValueError("Invalid learning rate scheduler specified")
+        # Mode-specific validation
+        if self.mode == "train":
+            if self.training is None:
+                raise ValueError("Training configuration required in train mode")
+            if self.training.lr_scheduler not in ["cosine", "step", "plateau"]:
+                raise ValueError("Invalid learning rate scheduler specified")
+        else:  # process mode
+            if self.processing is None:
+                raise ValueError("Processing configuration required in process mode")
     
     def save(self, config_path: Union[str, Path]):
         """Save configuration to YAML file."""

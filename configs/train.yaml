@@ -1,0 +1,48 @@
+mode: train
+experiment_name: multispectral_segmentation
+seed: 42
+output_dir: outputs
+
+model:
+  backbone: resnet50
+  output_stride: 16
+  num_classes: 21
+  pretrained: true
+
+data:
+  data_dir: data/dataset
+  train_split: train
+  val_split: val
+  batch_size: 16
+  bands: [red, green, blue, nir]
+  image_size: [512, 512]
+  num_workers: 4
+
+spectral:
+  indices: [ndvi, evi]
+  use_as_features: true
+  band_attention: true
+  fusion_type: adaptive
+
+training:
+  epochs: 100
+  learning_rate: 0.001
+  lr_scheduler: cosine
+  warmup_epochs: 5
+  weight_decay: 0.0001
+  mixed_precision: true
+  grad_clip: 1.0
+  early_stopping:
+    patience: 10
+    min_delta: 0.001
+  optimizer:
+    name: adamw
+    beta1: 0.9
+    beta2: 0.999
+  loss:
+    name: cross_entropy
+    class_weights: null  # Set to list of weights for class imbalance
+  metrics:
+    - mean_iou
+    - pixel_accuracy
+    - f1_score
