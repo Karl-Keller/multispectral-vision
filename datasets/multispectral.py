@@ -4,7 +4,7 @@ Multi-spectral dataset implementation supporting both single and dual-source inp
 
 import os
 from pathlib import Path
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Union
 
 import numpy as np
 import torch
@@ -13,6 +13,11 @@ import rasterio
 from rasterio.windows import Window
 import albumentations as A
 from PIL import Image
+import geopandas as gpd
+from shapely.geometry import Polygon, MultiPolygon
+import json
+from rasterio.features import rasterize
+from rasterio.transform import from_bounds
 
 class MultispectralDataset(Dataset):
     """Dataset for multi-spectral image segmentation.
@@ -33,7 +38,9 @@ class MultispectralDataset(Dataset):
         is_training: bool = True,
         rgb_dir: Optional[str] = None,
         mask_dir: Optional[str] = None,
-        mask_suffix: str = "_mask"
+        mask_suffix: str = "_mask",
+        annotation_format: str = "raster",  # "raster", "geojson", or "shapefile"
+        class_map: Optional[Dict[str, int]] = None
     ):
         """Initialize the dataset.
         
@@ -46,6 +53,8 @@ class MultispectralDataset(Dataset):
             rgb_dir: Optional directory containing RGB images
             mask_dir: Optional directory for masks (defaults to data_dir)
             mask_suffix: Suffix for mask files
+            annotation_format: Format of the annotations ("raster", "geojson", or "shapefile")
+            class_map: Dictionary mapping feature types to class indices
         """
         self.data_dir = Path(data_dir)
         self.rgb_dir = Path(rgb_dir) if rgb_dir else None
@@ -55,6 +64,8 @@ class MultispectralDataset(Dataset):
         self.indices = indices
         self.is_training = is_training
         self.mask_suffix = mask_suffix
+        self.annotation_format = annotation_format
+        self.class_map = class_map or {}
         
         # Get list of files
         self.ms_files = sorted([
@@ -64,6 +75,10 @@ class MultispectralDataset(Dataset):
         
         if not self.ms_files:
             raise ValueError(f"No .tif files found in {data_dir}")
+            
+        # Validate annotation format
+        if annotation_format not in ["raster", "geojson", "shapefile"]:
+            raise ValueError(f"Unsupported annotation format: {annotation_format}")
             
         # Setup augmentations
         if is_training:
@@ -79,6 +94,50 @@ class MultispectralDataset(Dataset):
                 A.Normalize()
             ])
     
+    def _load_vector_annotations(self, ms_path: Path) -> np.ndarray:
+        """Load and rasterize vector annotations (GeoJSON or Shapefile).
+        
+        Args:
+            ms_path: Path to the multi-spectral image file
+            
+        Returns:
+            Rasterized mask array [H, W]
+        """
+        # Get annotation path
+        base_name = ms_path.stem
+        if self.annotation_format == "geojson":
+            anno_path = self.mask_dir / f"{base_name}.geojson"
+        else:  # shapefile
+            anno_path = self.mask_dir / f"{base_name}.shp"
+            
+        # Read vector data
+        gdf = gpd.read_file(anno_path)
+        
+        # Get image metadata for rasterization
+        with rasterio.open(ms_path) as src:
+            height = src.height
+            width = src.width
+            transform = src.transform
+            
+        # Prepare shapes for rasterization
+        shapes = []
+        for idx, row in gdf.iterrows():
+            geom = row.geometry
+            if isinstance(geom, (Polygon, MultiPolygon)):
+                class_val = self.class_map.get(row.get('class', 'default'), 1)
+                shapes.append((geom, class_val))
+                
+        # Rasterize the shapes
+        mask = rasterize(
+            shapes=shapes,
+            out_shape=(height, width),
+            transform=transform,
+            fill=0,
+            dtype=np.int32
+        )
+        
+        return mask
+        
     def __len__(self) -> int:
         return len(self.ms_files)
     
@@ -97,9 +156,12 @@ class MultispectralDataset(Dataset):
         with rasterio.open(ms_path) as src:
             ms_img = src.read()  # [C, H, W]
             
-        # Load mask
-        with rasterio.open(mask_path) as src:
-            mask = src.read(1)  # [H, W]
+        # Load mask based on annotation format
+        if self.annotation_format == "raster":
+            with rasterio.open(mask_path) as src:
+                mask = src.read(1)  # [H, W]
+        else:  # vector format (geojson or shapefile)
+            mask = self._load_vector_annotations(ms_path)
         
         # Load RGB if available
         if self.rgb_dir:

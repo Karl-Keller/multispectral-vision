@@ -75,6 +75,49 @@ export MLFLOW_ARTIFACT_LOCATION=/path/to/artifacts
 
 ## Usage
 
+### Annotation Formats
+
+The system supports both raster and vector-based annotations:
+
+1. **Raster Masks** (Default)
+   - Standard GeoTIFF format
+   - One mask per image
+   - Class values encoded as pixel values
+   - Same dimensions as input image
+
+2. **Vector Annotations**
+   - Supports GeoJSON and Shapefile formats
+   - Polygon-based feature annotations
+   - Automatic rasterization during training
+   - Class mapping from feature properties
+
+Example vector annotation usage:
+```python
+# Define class mapping
+class_map = {
+    'building': 1,
+    'vegetation': 2,
+    'water': 3,
+    'road': 4
+}
+
+# Initialize dataset with GeoJSON annotations
+dataset = MultispectralDataset(
+    data_dir='data/ms_images',
+    input_size=(512, 512),
+    bands=['B2', 'B3', 'B4', 'B8'],
+    mask_dir='data/annotations',
+    annotation_format='geojson',  # or 'shapefile'
+    class_map=class_map
+)
+```
+
+Vector annotations should follow this structure:
+- One annotation file per image (same base name)
+- Each feature should have a 'class' property
+- Features must be properly georeferenced
+- Supported geometry types: Polygon, MultiPolygon
+
 ### Basic Usage
 
 The system operates in two distinct modes:
