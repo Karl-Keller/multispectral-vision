@@ -39,11 +39,34 @@ A PyTorch implementation of DeepLabV3+ architecture modified for multi-spectral 
 
 ## Requirements
 
+You can set up the development environment using either pip or conda:
+
+### Using pip
+
 Install dependencies using pip:
 
 ```bash
 pip install -r requirements.txt
 ```
+
+### Using conda
+
+1. Create the conda environment from the provided environment.yml:
+```bash
+# Create the environment
+conda env create -f environment.yml
+
+# Activate the environment
+conda activate multispectral-vision
+```
+
+If you run into any issues with specific packages:
+- For CPU-only setup: Install PyTorch without CUDA support
+- Some packages might need to be installed via pip after conda environment creation
+- If you experience issues with Python 3.12, try creating the environment with Python 3.11:
+  ```bash
+  conda env create -f environment.yml python=3.11
+  ```
 
 ### MLflow Setup
 
